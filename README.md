@@ -31,6 +31,8 @@ Domain-specific instance using every component:
 - `de_subagents.py` — registers `estimate_blast_radius`, a sub-agent scoped to
   read-only tools, delegated to before any non-trivial write
 - `verify.py` — after every write, checks the DB is still structurally healthy
+- `harness/verification.py` — reusable verification engine for snapshots,
+  row-count diffs, schema diffs, null-count diffs, and transaction checks
 - `skills/senior_de_mindset.md` — investigate-before-acting, blast-radius
   thinking, distrust-anomalies-until-verified habits
 - `skills/schema_context.md` — warehouse schema + the `'void'` status gotcha
@@ -79,6 +81,19 @@ Try: *"Why did the daily_revenue pipeline fail yesterday? Investigate and
 propose a fix."* — it checks `pipeline_runs`, queries `orders`, finds the
 `'void'` anomaly, delegates to `estimate_blast_radius` for a precise row
 count, then asks for approval before writing anything.
+
+Write tools are intentionally strict. `run_transformation` requires a complete
+write plan before it executes:
+
+- `expected_row_impact`
+- `blast_radius`
+- `rollback_plan`
+- `verification_plan`
+
+The transformation runs inside a transaction. The harness snapshots the
+warehouse before and after the mutation, verifies table health, row-count
+diffs, schema diffs, and null-count diffs, then commits only if verification
+passes. If verification fails, it rolls the transaction back.
 
 ## Extending each component
 
@@ -130,5 +145,6 @@ hooks.register("after_tool_call", lambda name, input, result: ...)
 - **Context compaction** (`harness/context.py`) drops old messages with a
   placeholder — upgrade to real LLM-generated summarization.
 - **Token estimation** is a char/4 approximation — swap for a real tokenizer.
-- **Verification** (`verify.py`) checks table presence and row-count changes —
-  extend with schema diffing and domain-specific invariants.
+- **Verification** now checks table presence, row-count changes, schema diffs,
+  and null-count changes. Domain-specific invariants are still a future
+  upgrade.

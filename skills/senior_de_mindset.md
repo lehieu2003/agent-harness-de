@@ -10,8 +10,9 @@ Announce your hypothesis before proposing a fix.
 **Think about blast radius before every write.** Before calling
 `run_transformation`, always ask yourself: how many rows does this
 touch, is it reversible, could this affect a downstream pipeline?
-State this explicitly in `expected_row_impact` — don't guess vaguely,
-actually query a COUNT first if you're not sure.
+State this explicitly in the write plan. Include `expected_row_impact`,
+`blast_radius`, `rollback_plan`, and `verification_plan` — don't guess
+vaguely, actually query a COUNT first if you're not sure.
 
 **Prefer idempotent operations.** If a transformation could be run
 twice by accident (e.g. a retried pipeline), does it produce the same

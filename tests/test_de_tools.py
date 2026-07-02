@@ -8,6 +8,14 @@ import de_tools
 from harness.tools import execute_tool
 
 
+WRITE_PLAN = {
+    "expected_row_impact": "one row by primary key",
+    "blast_radius": "orders table only; one customer-facing revenue row changes",
+    "rollback_plan": "restore previous amount for order_id = 1",
+    "verification_plan": "check row count and updated amount for order_id = 1",
+}
+
+
 class DataEngineerToolTests(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.TemporaryDirectory()
@@ -91,15 +99,41 @@ class DataEngineerToolTests(unittest.TestCase):
     def test_run_transformation_returns_structured_write_result(self):
         result = de_tools.run_transformation(
             "UPDATE orders SET amount = amount + 1 WHERE order_id = 1",
-            "one row by primary key",
+            **WRITE_PLAN,
         )
 
         self.assertTrue(result.ok)
         self.assertEqual(result.data["rows_affected"], 1)
-        self.assertEqual(result.data["expected_row_impact"], "one row by primary key")
+        self.assertEqual(result.data["write_plan"]["expected_row_impact"], "one row by primary key")
+        self.assertTrue(result.data["verification"]["ok"])
+
+    def test_run_transformation_requires_full_write_plan(self):
+        result = de_tools.run_transformation(
+            "UPDATE orders SET amount = amount + 1 WHERE order_id = 1",
+            expected_row_impact="one row",
+        )
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error, "missing_write_plan")
+        self.assertEqual(
+            result.data["missing_fields"],
+            ["blast_radius", "rollback_plan", "verification_plan"],
+        )
+
+    def test_run_transformation_rejects_update_without_where(self):
+        result = de_tools.run_transformation(
+            "UPDATE orders SET amount = 0",
+            **WRITE_PLAN,
+        )
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error, "missing_where")
 
     def test_run_transformation_returns_structured_error(self):
-        result = de_tools.run_transformation("UPDATE missing SET amount = 0 WHERE id = 1", "unknown")
+        result = de_tools.run_transformation(
+            "UPDATE missing SET amount = 0 WHERE id = 1",
+            **WRITE_PLAN,
+        )
 
         self.assertFalse(result.ok)
         self.assertIn("Transformation failed", result.summary)
@@ -122,12 +156,13 @@ class DataEngineerToolTests(unittest.TestCase):
             "run_transformation",
             {
                 "sql": "UPDATE orders SET amount = amount + 1 WHERE order_id = 1",
-                "expected_row_impact": "one row by primary key",
+                **WRITE_PLAN,
             },
         ))
 
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["data"]["rows_affected"], 1)
+        self.assertTrue(payload["data"]["verification"]["ok"])
 
 
 if __name__ == "__main__":

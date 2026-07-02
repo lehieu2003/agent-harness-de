@@ -14,8 +14,15 @@ from harness.tools import register_tool
 from harness.permissions import mark_risky
 from harness.sql_safety import validate_read_sql, validate_write_sql
 from harness.tool_results import tool_error, tool_success
+from harness.verification import VerificationEngine
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "warehouse.db")
+REQUIRED_WRITE_PLAN_FIELDS = {
+    "expected_row_impact": "Expected row impact is required before a write.",
+    "blast_radius": "Blast-radius estimate is required before a write.",
+    "rollback_plan": "Rollback plan is required before a write.",
+    "verification_plan": "Verification plan is required before a write.",
+}
 
 
 def _connect():
@@ -37,6 +44,24 @@ def _resolve_table_name(cur, table_name: str) -> str:
     if table_name not in _table_names(cur):
         raise ValueError(f"Table '{table_name}' not found.")
     return _quote_identifier(table_name)
+
+
+def _validate_write_plan(**fields):
+    missing = [
+        name
+        for name, message in REQUIRED_WRITE_PLAN_FIELDS.items()
+        if not str(fields.get(name) or "").strip()
+    ]
+    if missing:
+        return tool_error(
+            summary="Missing write plan fields: " + ", ".join(missing) + ".",
+            error="missing_write_plan",
+            data={
+                "missing_fields": missing,
+                "required_fields": list(REQUIRED_WRITE_PLAN_FIELDS),
+            },
+        )
+    return None
 
 
 # ---------- Read-only tools (safe, no approval needed) ----------
@@ -246,12 +271,30 @@ def check_pipeline_status(pipeline_name: str):
         "type": "object",
         "properties": {
             "sql": {"type": "string"},
-            "expected_row_impact": {"type": "string", "description": "Your estimate of how many rows this affects, and why — shown to the user for approval."}
+            "expected_row_impact": {"type": "string", "description": "Estimate how many rows this affects, and why."},
+            "blast_radius": {"type": "string", "description": "Tables, rows, downstream jobs, and users that could be affected."},
+            "rollback_plan": {"type": "string", "description": "Concrete rollback approach if the write is wrong."},
+            "verification_plan": {"type": "string", "description": "Checks that prove the write behaved as intended."}
         },
-        "required": ["sql", "expected_row_impact"]
+        "required": ["sql", "expected_row_impact", "blast_radius", "rollback_plan", "verification_plan"]
     }
 })
-def run_transformation(sql: str, expected_row_impact: str):
+def run_transformation(
+    sql: str,
+    expected_row_impact: str = "",
+    blast_radius: str = "",
+    rollback_plan: str = "",
+    verification_plan: str = "",
+):
+    plan_error = _validate_write_plan(
+        expected_row_impact=expected_row_impact,
+        blast_radius=blast_radius,
+        rollback_plan=rollback_plan,
+        verification_plan=verification_plan,
+    )
+    if plan_error:
+        return plan_error
+
     safety = validate_write_sql(sql)
     if not safety.ok:
         return tool_error(
@@ -262,19 +305,43 @@ def run_transformation(sql: str, expected_row_impact: str):
 
     conn = _connect()
     cur = conn.cursor()
+    verifier = VerificationEngine(DB_PATH)
     try:
+        before = verifier.snapshot(conn)
         cur.execute(sql)
         affected = cur.rowcount
+        after = verifier.snapshot(conn)
+        report = verifier.compare(before, after)
+        if not report.ok:
+            conn.rollback()
+            conn.close()
+            return tool_error(
+                summary=report.summary + " Transaction rolled back.",
+                error="verification_failed",
+                data={"verification": report.to_dict()},
+                warnings=report.warnings,
+            )
         conn.commit()
         conn.close()
         return tool_success(
-            summary=f"Executed. Rows affected: {affected}. (Estimated: {expected_row_impact})",
+            summary=(
+                f"Executed. Rows affected: {affected}. "
+                f"(Estimated: {expected_row_impact}) {report.summary}"
+            ),
             data={
                 "rows_affected": affected,
-                "expected_row_impact": expected_row_impact,
+                "write_plan": {
+                    "expected_row_impact": expected_row_impact,
+                    "blast_radius": blast_radius,
+                    "rollback_plan": rollback_plan,
+                    "verification_plan": verification_plan,
+                },
+                "verification": report.to_dict(),
             },
+            warnings=report.warnings,
         )
     except Exception as e:
+        conn.rollback()
         conn.close()
         return tool_error(summary=f"Transformation failed: {e}", error=str(e))
 
@@ -298,19 +365,35 @@ def drop_or_truncate(table_name: str, action: str):
 
     conn = _connect()
     cur = conn.cursor()
+    verifier = VerificationEngine(DB_PATH)
     try:
+        before = verifier.snapshot(conn)
         safe_table = _resolve_table_name(cur, table_name)
         if action == "drop":
             cur.execute(f"DROP TABLE {safe_table}")
         else:
             cur.execute(f"DELETE FROM {safe_table}")
+        after = verifier.snapshot(conn)
+        expected_missing = {table_name} if action == "drop" else set()
+        report = verifier.compare(before, after, expected_missing_tables=expected_missing)
+        if not report.ok:
+            conn.rollback()
+            conn.close()
+            return tool_error(
+                summary=report.summary + " Transaction rolled back.",
+                error="verification_failed",
+                data={"table": table_name, "action": action, "verification": report.to_dict()},
+                warnings=report.warnings,
+            )
         conn.commit()
         conn.close()
         return tool_success(
-            summary=f"{action.upper()} completed on {table_name}.",
-            data={"table": table_name, "action": action},
+            summary=f"{action.upper()} completed on {table_name}. {report.summary}",
+            data={"table": table_name, "action": action, "verification": report.to_dict()},
+            warnings=report.warnings,
         )
     except Exception as e:
+        conn.rollback()
         conn.close()
         return tool_error(
             summary=f"Failed: {e}",

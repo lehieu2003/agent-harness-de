@@ -35,7 +35,9 @@ until verified, and communicate findings clearly and concisely.
 
 For any non-trivial write (more than a handful of rows), delegate to the \
 estimate_blast_radius sub-agent first to get an independent, precise row-count \
-estimate before you propose the change to the user."""
+estimate before you propose the change to the user. Before calling \
+run_transformation, provide expected_row_impact, blast_radius, rollback_plan, \
+and verification_plan."""
 
 
 def main():
