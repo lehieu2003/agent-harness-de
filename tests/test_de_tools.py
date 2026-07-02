@@ -88,6 +88,47 @@ class DataEngineerToolTests(unittest.TestCase):
         self.assertEqual(result.data["pipeline_name"], "daily_revenue")
         self.assertEqual(result.data["runs"][0]["status"], "failed")
 
+    def test_run_transformation_returns_structured_write_result(self):
+        result = de_tools.run_transformation(
+            "UPDATE orders SET amount = amount + 1 WHERE order_id = 1",
+            "one row by primary key",
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.data["rows_affected"], 1)
+        self.assertEqual(result.data["expected_row_impact"], "one row by primary key")
+
+    def test_run_transformation_returns_structured_error(self):
+        result = de_tools.run_transformation("UPDATE missing SET amount = 0", "unknown")
+
+        self.assertFalse(result.ok)
+        self.assertIn("Transformation failed", result.summary)
+
+    def test_drop_or_truncate_returns_structured_result(self):
+        result = de_tools.drop_or_truncate("orders", "truncate")
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.data["table"], "orders")
+        self.assertEqual(result.data["action"], "truncate")
+
+    def test_drop_or_truncate_rejects_invalid_action(self):
+        result = de_tools.drop_or_truncate("orders", "delete")
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error, "invalid_action")
+
+    def test_execute_tool_serializes_write_result(self):
+        payload = json.loads(execute_tool(
+            "run_transformation",
+            {
+                "sql": "UPDATE orders SET amount = amount + 1 WHERE order_id = 1",
+                "expected_row_impact": "one row by primary key",
+            },
+        ))
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["data"]["rows_affected"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -60,11 +60,17 @@ def serialize_tool_result(result) -> str:
     return json.dumps(asdict(normalized), default=str)
 
 
-def tool_result_failed(serialized_result: str) -> bool:
+def tool_result_failed(result) -> bool:
+    if isinstance(result, ToolResult):
+        return not result.ok
+
+    if isinstance(result, dict) and "ok" in result:
+        return not bool(result["ok"])
+
     try:
-        payload = json.loads(serialized_result)
+        payload = json.loads(result)
     except (TypeError, json.JSONDecodeError):
-        lowered = str(serialized_result).lower()
+        lowered = str(result).lower()
         return "failed" in lowered or "error" in lowered
 
     if isinstance(payload, dict) and "ok" in payload:

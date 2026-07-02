@@ -258,10 +258,16 @@ def run_transformation(sql: str, expected_row_impact: str):
         affected = cur.rowcount
         conn.commit()
         conn.close()
-        return f"Executed. Rows affected: {affected}. (Estimated: {expected_row_impact})"
+        return tool_success(
+            summary=f"Executed. Rows affected: {affected}. (Estimated: {expected_row_impact})",
+            data={
+                "rows_affected": affected,
+                "expected_row_impact": expected_row_impact,
+            },
+        )
     except Exception as e:
         conn.close()
-        return f"Transformation failed: {e}"
+        return tool_error(summary=f"Transformation failed: {e}", error=str(e))
 
 
 @register_tool("drop_or_truncate", {
@@ -274,6 +280,13 @@ def run_transformation(sql: str, expected_row_impact: str):
     }
 })
 def drop_or_truncate(table_name: str, action: str):
+    if action not in {"drop", "truncate"}:
+        return tool_error(
+            summary=f"Invalid destructive action '{action}'. Expected 'drop' or 'truncate'.",
+            error="invalid_action",
+            data={"table": table_name, "action": action},
+        )
+
     conn = _connect()
     cur = conn.cursor()
     try:
@@ -284,10 +297,17 @@ def drop_or_truncate(table_name: str, action: str):
             cur.execute(f"DELETE FROM {safe_table}")
         conn.commit()
         conn.close()
-        return f"{action.upper()} completed on {table_name}."
+        return tool_success(
+            summary=f"{action.upper()} completed on {table_name}.",
+            data={"table": table_name, "action": action},
+        )
     except Exception as e:
         conn.close()
-        return f"Failed: {e}"
+        return tool_error(
+            summary=f"Failed: {e}",
+            error=str(e),
+            data={"table": table_name, "action": action},
+        )
 
 
 mark_risky("run_transformation")

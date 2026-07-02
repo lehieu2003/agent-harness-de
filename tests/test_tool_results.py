@@ -54,6 +54,10 @@ class ToolResultTests(unittest.TestCase):
         self.assertFalse(tool_result_failed(serialize_tool_result(tool_success("ok"))))
         self.assertTrue(tool_result_failed("Transformation failed: bad SQL"))
 
+    def test_tool_result_failed_reads_direct_tool_result_objects(self):
+        self.assertTrue(tool_result_failed(tool_error("failed", error="bad")))
+        self.assertFalse(tool_result_failed(tool_success("ok")))
+
 
 if __name__ == "__main__":
     unittest.main()
