@@ -84,8 +84,8 @@ class SafetyTests(unittest.TestCase):
         result = de_tools.run_query("SELECT * FROM orders; DELETE FROM orders")
 
         self.assertFalse(result.ok)
-        self.assertEqual(result.error, "write_sql_rejected")
-        self.assertIn("REJECTED", result.summary)
+        self.assertEqual(result.error, "multiple_statements")
+        self.assertIn("Rejected", result.summary)
 
     def test_profile_data_rejects_unknown_injected_table_name(self):
         result = de_tools.profile_data("orders; DROP TABLE customers")

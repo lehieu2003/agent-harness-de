@@ -8,19 +8,14 @@ structurally impossible for read tools to write, and structurally
 required that write tools go through approval + verification.
 """
 import sqlite3
-import re
 import os
 
 from harness.tools import register_tool
 from harness.permissions import mark_risky
+from harness.sql_safety import validate_read_sql, validate_write_sql
 from harness.tool_results import tool_error, tool_success
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "warehouse.db")
-
-WRITE_KEYWORDS = re.compile(
-    r"\b(INSERT|UPDATE|DELETE|DROP|TRUNCATE|ALTER|CREATE|REPLACE|MERGE)\b",
-    re.IGNORECASE
-)
 
 
 def _connect():
@@ -92,16 +87,12 @@ def inspect_schema(table_name: str = ""):
 })
 def run_query(sql: str):
     # Hard structural guard — not relying on the model to self-restrict.
-    if WRITE_KEYWORDS.search(sql):
+    safety = validate_read_sql(sql)
+    if not safety.ok:
         return tool_error(
-            summary=("REJECTED: run_query only allows SELECT statements. "
-                     "Use run_transformation for writes (requires approval)."),
-            error="write_sql_rejected",
-        )
-    if not sql.strip().upper().startswith("SELECT"):
-        return tool_error(
-            summary="REJECTED: query must start with SELECT.",
-            error="non_select_sql_rejected",
+            summary=safety.summary,
+            error=safety.error or "unsafe_read_sql",
+            data={"classification": safety.classification},
         )
 
     conn = _connect()
@@ -182,6 +173,16 @@ def profile_data(table_name: str):
     }
 })
 def validate_sql(sql: str):
+    safety = validate_read_sql(sql)
+    if not safety.ok:
+        safety = validate_write_sql(sql)
+    if not safety.ok:
+        return tool_error(
+            summary=safety.summary,
+            error=safety.error or "unsafe_sql",
+            data={"classification": safety.classification},
+        )
+
     conn = _connect()
     cur = conn.cursor()
     try:
@@ -251,6 +252,14 @@ def check_pipeline_status(pipeline_name: str):
     }
 })
 def run_transformation(sql: str, expected_row_impact: str):
+    safety = validate_write_sql(sql)
+    if not safety.ok:
+        return tool_error(
+            summary=safety.summary,
+            error=safety.error or "unsafe_write_sql",
+            data={"classification": safety.classification},
+        )
+
     conn = _connect()
     cur = conn.cursor()
     try:

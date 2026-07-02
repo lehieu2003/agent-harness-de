@@ -99,7 +99,7 @@ class DataEngineerToolTests(unittest.TestCase):
         self.assertEqual(result.data["expected_row_impact"], "one row by primary key")
 
     def test_run_transformation_returns_structured_error(self):
-        result = de_tools.run_transformation("UPDATE missing SET amount = 0", "unknown")
+        result = de_tools.run_transformation("UPDATE missing SET amount = 0 WHERE id = 1", "unknown")
 
         self.assertFalse(result.ok)
         self.assertIn("Transformation failed", result.summary)
