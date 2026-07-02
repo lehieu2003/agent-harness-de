@@ -18,7 +18,20 @@ class DataEngineerToolTests(unittest.TestCase):
         conn = sqlite3.connect(self.db_path)
         cur = conn.cursor()
         cur.execute("CREATE TABLE orders (order_id INTEGER PRIMARY KEY, amount REAL)")
+        cur.execute("""
+            CREATE TABLE pipeline_runs (
+                run_id INTEGER PRIMARY KEY,
+                pipeline_name TEXT,
+                run_date TEXT,
+                status TEXT,
+                error_message TEXT
+            )
+        """)
         cur.executemany("INSERT INTO orders VALUES (?, ?)", [(1, 10.0), (2, 20.0)])
+        cur.execute(
+            "INSERT INTO pipeline_runs VALUES (?, ?, ?, ?, ?)",
+            (1, "daily_revenue", "2025-06-30", "failed", "anomaly detected"),
+        )
         conn.commit()
         conn.close()
 
@@ -30,8 +43,8 @@ class DataEngineerToolTests(unittest.TestCase):
         result = de_tools.inspect_schema()
 
         self.assertTrue(result.ok)
-        self.assertEqual(result.data["tables"], ["orders"])
-        self.assertEqual(result.summary, "Tables: orders")
+        self.assertEqual(result.data["tables"], ["orders", "pipeline_runs"])
+        self.assertEqual(result.summary, "Tables: orders, pipeline_runs")
 
     def test_inspect_schema_returns_structured_columns(self):
         result = de_tools.inspect_schema("orders")
@@ -53,6 +66,27 @@ class DataEngineerToolTests(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["data"]["columns"], ["count"])
         self.assertEqual(payload["data"]["rows"], [[2]])
+
+    def test_profile_data_returns_structured_profile(self):
+        result = de_tools.profile_data("orders")
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.data["table"], "orders")
+        self.assertEqual(result.data["total_rows"], 2)
+        self.assertEqual(result.data["null_counts"]["amount"], 0)
+
+    def test_validate_sql_returns_structured_query_plan(self):
+        result = de_tools.validate_sql("SELECT * FROM orders")
+
+        self.assertTrue(result.ok)
+        self.assertIn("query_plan", result.data)
+
+    def test_check_pipeline_status_returns_structured_runs(self):
+        result = de_tools.check_pipeline_status("daily_revenue")
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.data["pipeline_name"], "daily_revenue")
+        self.assertEqual(result.data["runs"][0]["status"], "failed")
 
 
 if __name__ == "__main__":

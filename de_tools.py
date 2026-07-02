@@ -151,16 +151,25 @@ def profile_data(table_name: str):
         cur.execute(f"PRAGMA table_info({safe_table})")
         cols = [c[1] for c in cur.fetchall()]
         lines = [f"Total rows: {total}"]
+        null_counts = {}
         for col in cols:
             safe_col = _quote_identifier(col)
             cur.execute(f"SELECT COUNT(*) FROM {safe_table} WHERE {safe_col} IS NULL")
             nulls = cur.fetchone()[0]
+            null_counts[col] = nulls
             lines.append(f"  {col}: {nulls} nulls")
         conn.close()
-        return "\n".join(lines)
+        return tool_success(
+            summary="\n".join(lines),
+            data={
+                "table": table_name,
+                "total_rows": total,
+                "null_counts": null_counts,
+            },
+        )
     except Exception as e:
         conn.close()
-        return f"Error profiling table: {e}"
+        return tool_error(summary=f"Error profiling table: {e}", error=str(e))
 
 
 @register_tool("validate_sql", {
@@ -179,10 +188,13 @@ def validate_sql(sql: str):
         cur.execute("EXPLAIN QUERY PLAN " + sql)
         plan = cur.fetchall()
         conn.close()
-        return f"Valid. Query plan: {plan}"
+        return tool_success(
+            summary=f"Valid. Query plan: {plan}",
+            data={"query_plan": [list(row) for row in plan]},
+        )
     except Exception as e:
         conn.close()
-        return f"Invalid SQL: {e}"
+        return tool_error(summary=f"Invalid SQL: {e}", error=str(e))
 
 
 @register_tool("check_pipeline_status", {
@@ -204,8 +216,20 @@ def check_pipeline_status(pipeline_name: str):
     rows = cur.fetchall()
     conn.close()
     if not rows:
-        return f"No runs found for pipeline '{pipeline_name}'."
-    return "\n".join(f"{r[0]} | {r[1]} | {r[2] or ''}" for r in rows)
+        return tool_success(
+            summary=f"No runs found for pipeline '{pipeline_name}'.",
+            data={"pipeline_name": pipeline_name, "runs": []},
+        )
+    return tool_success(
+        summary="\n".join(f"{r[0]} | {r[1]} | {r[2] or ''}" for r in rows),
+        data={
+            "pipeline_name": pipeline_name,
+            "runs": [
+                {"run_date": r[0], "status": r[1], "error_message": r[2]}
+                for r in rows
+            ],
+        },
+    )
 
 
 # ---------- Write tools (risky — require approval + get verified) ----------

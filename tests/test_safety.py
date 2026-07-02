@@ -91,7 +91,8 @@ class SafetyTests(unittest.TestCase):
         result = de_tools.profile_data("orders; DROP TABLE customers")
         schema = de_tools.inspect_schema()
 
-        self.assertIn("not found", result)
+        self.assertFalse(result.ok)
+        self.assertIn("not found", result.summary)
         self.assertIn("customers", schema.data["tables"])
 
     def test_verification_reports_row_count_changes(self):
