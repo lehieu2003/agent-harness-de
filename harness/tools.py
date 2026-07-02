@@ -3,6 +3,8 @@ Tool registry: define tools once with @register_tool, and the harness
 automatically knows their schema (for the LLM) and how to execute them.
 """
 
+from .tool_results import serialize_tool_result, tool_error
+
 TOOL_REGISTRY = {}
 
 
@@ -37,13 +39,22 @@ def get_tool_schemas(allowed_tools: list[str] | None = None) -> list[dict]:
 
 
 def execute_tool(name: str, tool_input: dict, allowed_tools: list[str] | None = None) -> str:
-    """Look up and run a registered tool. Returns a string result."""
+    """Look up and run a registered tool. Returns a JSON string result."""
     if allowed_tools is not None and name not in allowed_tools:
-        return f"Error: tool '{name}' is not allowed in this agent scope."
+        return serialize_tool_result(tool_error(
+            summary=f"Tool '{name}' is not allowed in this agent scope.",
+            error="tool_not_allowed",
+        ))
     if name not in TOOL_REGISTRY:
-        return f"Error: unknown tool '{name}'"
+        return serialize_tool_result(tool_error(
+            summary=f"Unknown tool '{name}'.",
+            error="unknown_tool",
+        ))
     try:
         result = TOOL_REGISTRY[name]["fn"](**tool_input)
-        return str(result)
+        return serialize_tool_result(result)
     except Exception as e:
-        return f"Error running tool '{name}': {e}"
+        return serialize_tool_result(tool_error(
+            summary=f"Error running tool '{name}'.",
+            error=str(e),
+        ))

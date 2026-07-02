@@ -10,6 +10,7 @@ import sqlite3
 import os
 
 from harness.hooks import hooks
+from harness.tool_results import tool_result_failed
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "warehouse.db")
 
@@ -46,7 +47,7 @@ def verify_after_write(name, input, result):
     if name not in VERIFIED_TOOLS:
         return
 
-    if "failed" in result.lower() or "error" in result.lower():
+    if tool_result_failed(result):
         print(f"[VERIFY] Skipped — {name} did not complete successfully.")
         return
 

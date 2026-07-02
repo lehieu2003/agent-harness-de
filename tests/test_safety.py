@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import sqlite3
 import tempfile
@@ -42,10 +43,11 @@ class SafetyTests(unittest.TestCase):
         schemas = get_tool_schemas(["inspect_schema"])
 
         self.assertEqual([schema["name"] for schema in schemas], ["inspect_schema"])
-        self.assertIn(
-            "not allowed",
-            execute_tool("drop_or_truncate", {"table_name": "orders", "action": "drop"}, ["inspect_schema"]),
+        payload = json.loads(
+            execute_tool("drop_or_truncate", {"table_name": "orders", "action": "drop"}, ["inspect_schema"])
         )
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error"], "tool_not_allowed")
 
     def test_subagent_passes_allowed_tools_to_agent(self):
         captured = {}
@@ -67,7 +69,8 @@ class SafetyTests(unittest.TestCase):
         with patch("harness.core.Agent", FakeAgent):
             result = execute_tool("test_scoped_subagent", {"task": "count rows"})
 
-        self.assertIn("ran count rows", result)
+        payload = json.loads(result)
+        self.assertIn("ran count rows", payload["summary"])
         self.assertEqual(captured["allowed_tools"], ["inspect_schema", "run_query"])
 
     def test_session_id_rejects_path_traversal(self):
@@ -199,10 +202,15 @@ class SafetyTests(unittest.TestCase):
         )
 
         self.assertEqual(agent.run("list tables"), "done")
+        tool_message = next(m for m in agent.last_messages if m.get("role") == "tool")
+        tool_payload = json.loads(tool_message["content"])
+
+        self.assertEqual(tool_message["tool_call_id"], "call_1")
+        self.assertEqual(tool_payload["summary"], de_tools.inspect_schema())
         self.assertIn({
             "role": "tool",
             "tool_call_id": "call_1",
-            "content": de_tools.inspect_schema(),
+            "content": tool_message["content"],
         }, agent.last_messages)
 
 
