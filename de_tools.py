@@ -28,6 +28,21 @@ def _connect():
     return sqlite3.connect(DB_PATH)
 
 
+def _quote_identifier(identifier: str) -> str:
+    return '"' + identifier.replace('"', '""') + '"'
+
+
+def _table_names(cur) -> set[str]:
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    return {r[0] for r in cur.fetchall()}
+
+
+def _resolve_table_name(cur, table_name: str) -> str:
+    if table_name not in _table_names(cur):
+        raise ValueError(f"Table '{table_name}' not found.")
+    return _quote_identifier(table_name)
+
+
 # ---------- Read-only tools (safe, no approval needed) ----------
 
 @register_tool("inspect_schema", {
@@ -47,12 +62,15 @@ def inspect_schema(table_name: str = ""):
         tables = [r[0] for r in cur.fetchall()]
         conn.close()
         return f"Tables: {', '.join(tables)}"
-    cur.execute(f"PRAGMA table_info({table_name})")
-    cols = cur.fetchall()
-    conn.close()
-    if not cols:
-        return f"Table '{table_name}' not found."
-    return "\n".join(f"{c[1]} ({c[2]})" for c in cols)
+    try:
+        safe_table = _resolve_table_name(cur, table_name)
+        cur.execute(f"PRAGMA table_info({safe_table})")
+        cols = cur.fetchall()
+        conn.close()
+        return "\n".join(f"{c[1]} ({c[2]})" for c in cols)
+    except ValueError as e:
+        conn.close()
+        return str(e)
 
 
 @register_tool("run_query", {
@@ -103,13 +121,15 @@ def profile_data(table_name: str):
     conn = _connect()
     cur = conn.cursor()
     try:
-        cur.execute(f"SELECT COUNT(*) FROM {table_name}")
+        safe_table = _resolve_table_name(cur, table_name)
+        cur.execute(f"SELECT COUNT(*) FROM {safe_table}")
         total = cur.fetchone()[0]
-        cur.execute(f"PRAGMA table_info({table_name})")
+        cur.execute(f"PRAGMA table_info({safe_table})")
         cols = [c[1] for c in cur.fetchall()]
         lines = [f"Total rows: {total}"]
         for col in cols:
-            cur.execute(f"SELECT COUNT(*) FROM {table_name} WHERE {col} IS NULL")
+            safe_col = _quote_identifier(col)
+            cur.execute(f"SELECT COUNT(*) FROM {safe_table} WHERE {safe_col} IS NULL")
             nulls = cur.fetchone()[0]
             lines.append(f"  {col}: {nulls} nulls")
         conn.close()
@@ -209,10 +229,11 @@ def drop_or_truncate(table_name: str, action: str):
     conn = _connect()
     cur = conn.cursor()
     try:
+        safe_table = _resolve_table_name(cur, table_name)
         if action == "drop":
-            cur.execute(f"DROP TABLE {table_name}")
+            cur.execute(f"DROP TABLE {safe_table}")
         else:
-            cur.execute(f"DELETE FROM {table_name}")
+            cur.execute(f"DELETE FROM {safe_table}")
         conn.commit()
         conn.close()
         return f"{action.upper()} completed on {table_name}."

@@ -12,7 +12,7 @@ Design choice: sub-agents get a SUBSET of tools (usually read-only),
 never the full toolset — this keeps delegation safe by construction,
 the same way permissions.py keeps writes safe by construction.
 """
-from harness.tools import register_tool, TOOL_REGISTRY
+from harness.tools import register_tool
 
 
 def make_subagent_tool(name: str, description: str, allowed_tools: list[str], system_prompt: str):
@@ -37,22 +37,13 @@ def make_subagent_tool(name: str, description: str, allowed_tools: list[str], sy
         # Local import avoids a circular import (core.py imports tools.py)
         from harness.core import Agent
 
-        # Build a scoped tool schema list containing only allowed_tools
-        scoped_schemas = [
-            TOOL_REGISTRY[t]["schema"] for t in allowed_tools if t in TOOL_REGISTRY
-        ]
-
-        sub_agent = Agent(system_prompt=system_prompt, max_turns=8, auto_approve=True)
-        # Temporarily restrict the global schema list for this sub-agent's run.
-        # (Simple approach for a starter harness — see note in README about
-        # upgrading this to per-agent tool registries instead of a global one.)
-        import harness.tools as tools_module
-        original_get_schemas = tools_module.get_tool_schemas
-        tools_module.get_tool_schemas = lambda: scoped_schemas
-        try:
-            result = sub_agent.run(task)
-        finally:
-            tools_module.get_tool_schemas = original_get_schemas
+        sub_agent = Agent(
+            system_prompt=system_prompt,
+            max_turns=8,
+            auto_approve=True,
+            allowed_tools=allowed_tools,
+        )
+        result = sub_agent.run(task)
 
         return f"[Sub-agent '{name}' result]\n{result}"
 

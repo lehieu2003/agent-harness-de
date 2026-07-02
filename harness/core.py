@@ -9,7 +9,13 @@ Core agent loop. This is the heart of the harness:
 Everything else in this package (context, permissions, hooks, skills,
 session) plugs into this loop.
 """
-from anthropic import Anthropic
+import json
+import os
+
+try:
+    from openai import OpenAI
+except ImportError:
+    OpenAI = None
 
 from .tools import get_tool_schemas, execute_tool
 from .permissions import RISKY_TOOLS, request_approval
@@ -18,23 +24,49 @@ from .hooks import hooks
 from .skills import relevant_skills_block
 
 
+def load_env_file(path: str | None = None):
+    """Load simple KEY=VALUE pairs from .env without requiring another package."""
+    env_path = path or os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+    if not os.path.exists(env_path):
+        return
+
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+
+
 class Agent:
     def __init__(
         self,
         system_prompt: str = "You are a helpful, general-purpose assistant.",
-        model: str = "claude-sonnet-4-6",
+        model: str | None = None,
         max_turns: int = 15,
         max_tokens: int = 4096,
         auto_approve: bool = False,
         use_skills: bool = True,
+        allowed_tools: list[str] | None = None,
     ):
-        self.client = Anthropic()
+        load_env_file()
+        if OpenAI is None:
+            raise RuntimeError("The openai package is required to run Agent. Install requirements.txt first.")
+        if not os.getenv("OPENAI_API_KEY"):
+            raise RuntimeError("OPENAI_API_KEY is required. Add it to .env or your shell environment.")
+
+        self.client = OpenAI()
         self.system_prompt = system_prompt
-        self.model = model
+        self.model = model or os.getenv("GPT_MODEL_MINI") or os.getenv("GPT_MODEL_NANO") or "gpt-4.1-mini"
         self.max_turns = max_turns
         self.max_tokens = max_tokens
         self.auto_approve = auto_approve
         self.use_skills = use_skills
+        self.allowed_tools = allowed_tools
 
     def run(self, user_message: str, messages: list | None = None) -> str:
         """
@@ -57,53 +89,70 @@ class Agent:
 
             hooks.fire("before_turn", turn=turn, messages=messages)
 
-            response = self.client.messages.create(
+            response = self.client.chat.completions.create(
                 model=self.model,
                 max_tokens=self.max_tokens,
-                system=system,
-                tools=get_tool_schemas(),
-                messages=messages,
+                messages=[{"role": "system", "content": system}, *messages],
+                tools=self._openai_tool_schemas(),
             )
 
             hooks.fire("after_response", response=response)
-            messages.append({"role": "assistant", "content": response.content})
+            response_message = response.choices[0].message
+            assistant_message = response_message.model_dump(exclude_none=True)
+            messages.append(assistant_message)
 
-            if response.stop_reason != "tool_use":
-                final_text = self._extract_text(response.content)
+            if not response_message.tool_calls:
+                final_text = response_message.content or ""
                 hooks.fire("on_end", final_output=final_text)
                 self.last_messages = messages
                 return final_text
 
             # Component: tool execution + permissions
-            tool_results = []
-            for block in response.content:
-                if block.type != "tool_use":
+            for tool_call in response_message.tool_calls:
+                name = tool_call.function.name
+                try:
+                    tool_input = json.loads(tool_call.function.arguments or "{}")
+                except json.JSONDecodeError as e:
+                    tool_input = {}
+                    result = f"Error: invalid tool arguments JSON: {e}"
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": result,
+                    })
                     continue
 
-                hooks.fire("before_tool_call", name=block.name, input=block.input)
+                hooks.fire("before_tool_call", name=name, input=tool_input)
 
-                if block.name in RISKY_TOOLS and not self.auto_approve:
-                    approved = request_approval(block.name, block.input)
+                if name in RISKY_TOOLS and not self.auto_approve:
+                    approved = request_approval(name, tool_input)
                     if not approved:
                         result = "User denied permission for this action."
                     else:
-                        result = execute_tool(block.name, block.input)
+                        result = execute_tool(name, tool_input, self.allowed_tools)
                 else:
-                    result = execute_tool(block.name, block.input)
+                    result = execute_tool(name, tool_input, self.allowed_tools)
 
-                hooks.fire("after_tool_call", name=block.name, input=block.input, result=result)
+                hooks.fire("after_tool_call", name=name, input=tool_input, result=result)
 
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
                     "content": result,
                 })
-
-            messages.append({"role": "user", "content": tool_results})
 
         self.last_messages = messages
         return "[Max turns reached without a final answer]"
 
-    @staticmethod
-    def _extract_text(content_blocks) -> str:
-        return "\n".join(b.text for b in content_blocks if b.type == "text")
+    def _openai_tool_schemas(self) -> list[dict]:
+        schemas = []
+        for schema in get_tool_schemas(self.allowed_tools):
+            schemas.append({
+                "type": "function",
+                "function": {
+                    "name": schema["name"],
+                    "description": schema.get("description", ""),
+                    "parameters": schema.get("input_schema", {"type": "object", "properties": {}}),
+                },
+            })
+        return schemas

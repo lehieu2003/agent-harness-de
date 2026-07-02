@@ -29,13 +29,17 @@ def register_tool(name: str, schema: dict):
     return decorator
 
 
-def get_tool_schemas() -> list[dict]:
+def get_tool_schemas(allowed_tools: list[str] | None = None) -> list[dict]:
     """Returns tool schemas in the format the Anthropic API expects."""
-    return [t["schema"] for t in TOOL_REGISTRY.values()]
+    if allowed_tools is None:
+        return [t["schema"] for t in TOOL_REGISTRY.values()]
+    return [TOOL_REGISTRY[t]["schema"] for t in allowed_tools if t in TOOL_REGISTRY]
 
 
-def execute_tool(name: str, tool_input: dict) -> str:
+def execute_tool(name: str, tool_input: dict, allowed_tools: list[str] | None = None) -> str:
     """Look up and run a registered tool. Returns a string result."""
+    if allowed_tools is not None and name not in allowed_tools:
+        return f"Error: tool '{name}' is not allowed in this agent scope."
     if name not in TOOL_REGISTRY:
         return f"Error: unknown tool '{name}'"
     try:

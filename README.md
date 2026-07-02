@@ -39,7 +39,25 @@ Domain-specific instance using every component:
 
 ```bash
 pip install -r requirements.txt
-export ANTHROPIC_API_KEY=your_key_here
+```
+
+Create a `.env` file in the project root:
+
+```env
+OPENAI_API_KEY=your_key_here
+
+GPT_MODEL_NANO=gpt-4.1-nano
+GPT_MODEL_MINI=gpt-4.1-mini
+```
+
+The harness defaults to `GPT_MODEL_MINI`, then falls back to `GPT_MODEL_NANO`.
+
+## Run local tests
+
+These tests do not call the OpenAI API and do not need `OPENAI_API_KEY`:
+
+```bash
+python -m unittest discover -s tests
 ```
 
 ## Run the generic assistant
@@ -105,14 +123,12 @@ hooks.register("after_tool_call", lambda name, input, result: ...)
 
 ## Known limitations / next upgrades
 
-- **Sub-agent tool scoping** (`harness/subagents.py`) currently patches the
-  global `get_tool_schemas` function during a sub-agent's run — fine for a
-  starter harness, but a production version should give each `Agent`
-  instance its own tool registry instead of sharing one global registry.
+- **Tool registry ownership** (`harness/tools.py`) is still global, although
+  each `Agent` can now expose and execute a scoped subset of tools.
 - **Skill routing** (`harness/skills.py`) uses keyword matching — upgrade to
   an LLM call or embedding search once you have more than a handful of skills.
 - **Context compaction** (`harness/context.py`) drops old messages with a
   placeholder — upgrade to real LLM-generated summarization.
 - **Token estimation** is a char/4 approximation — swap for a real tokenizer.
-- **Verification** (`verify.py`) only checks structural DB health — extend
-  with row-count-before-vs-after comparisons, schema diffing, etc.
+- **Verification** (`verify.py`) checks table presence and row-count changes —
+  extend with schema diffing and domain-specific invariants.
