@@ -9,7 +9,7 @@ from unittest.mock import patch
 import de_tools
 import verify
 from harness.core import Agent
-from harness.models import ModelMessage, ModelResponse
+from harness.models import ModelMessage, ModelResponse, ModelToolCall
 from harness.session import load_session, save_session
 from harness.subagents import make_subagent_tool
 from harness.tools import execute_tool, get_tool_schemas
@@ -127,6 +127,83 @@ class SafetyTests(unittest.TestCase):
         self.assertEqual(agent.run("hello"), "done")
         self.assertEqual(fake_client.calls[0]["system"], "test system")
         self.assertEqual(fake_client.calls[0]["messages"][0]["content"], "hello")
+
+    def test_agent_sends_assembled_prompt_to_model_client(self):
+        class FakeModelClient:
+            def __init__(self):
+                self.system = None
+
+            def complete(self, system, messages, tool_schemas, max_tokens):
+                self.system = system
+                return ModelResponse(
+                    message=ModelMessage(
+                        content="done",
+                        tool_calls=[],
+                        raw={"role": "assistant", "content": "done"},
+                    ),
+                    raw=object(),
+                )
+
+        fake_client = FakeModelClient()
+        agent = Agent(system_prompt="base", model_client=fake_client, use_skills=True)
+
+        with patch("harness.prompts.relevant_skills_block", return_value="skill block"):
+            agent.run("pipeline failed")
+
+        self.assertIn("base", fake_client.system)
+        self.assertIn("skill block", fake_client.system)
+
+    def test_agent_appends_tool_result_message(self):
+        class FakeModelClient:
+            def __init__(self):
+                self.call_count = 0
+
+            def complete(self, system, messages, tool_schemas, max_tokens):
+                self.call_count += 1
+                if self.call_count == 1:
+                    return ModelResponse(
+                        message=ModelMessage(
+                            content=None,
+                            tool_calls=[
+                                ModelToolCall(
+                                    id="call_1",
+                                    name="inspect_schema",
+                                    arguments="{}",
+                                )
+                            ],
+                            raw={
+                                "role": "assistant",
+                                "tool_calls": [{
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {"name": "inspect_schema", "arguments": "{}"},
+                                }],
+                            },
+                        ),
+                        raw=object(),
+                    )
+                return ModelResponse(
+                    message=ModelMessage(
+                        content="done",
+                        tool_calls=[],
+                        raw={"role": "assistant", "content": "done"},
+                    ),
+                    raw=object(),
+                )
+
+        agent = Agent(
+            system_prompt="base",
+            model_client=FakeModelClient(),
+            use_skills=False,
+            allowed_tools=["inspect_schema"],
+        )
+
+        self.assertEqual(agent.run("list tables"), "done")
+        self.assertIn({
+            "role": "tool",
+            "tool_call_id": "call_1",
+            "content": de_tools.inspect_schema(),
+        }, agent.last_messages)
 
 
 if __name__ == "__main__":

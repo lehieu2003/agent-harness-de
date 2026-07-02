@@ -11,12 +11,13 @@ session) plugs into this loop.
 """
 import json
 
+from .messages import assistant_message, tool_result_message, user_message as make_user_message
 from .models import OpenAIModelClient
 from .tools import get_tool_schemas, execute_tool
 from .permissions import RISKY_TOOLS, request_approval
 from .context import manage_context
 from .hooks import hooks
-from .skills import relevant_skills_block
+from .prompts import build_system_prompt
 
 
 class Agent:
@@ -45,14 +46,14 @@ class Agent:
         Pass `messages` (from a loaded session) to continue a conversation.
         """
         messages = list(messages) if messages else []
-        messages.append({"role": "user", "content": user_message})
+        messages.append(make_user_message(user_message))
 
-        # Component: built-in skills — inject relevant instructions
-        system = self.system_prompt
-        if self.use_skills:
-            skills_block = relevant_skills_block(user_message)
-            if skills_block:
-                system = f"{system}\n\n# Relevant skill instructions\n{skills_block}"
+        # Component: prompt assembly + built-in skills
+        system = build_system_prompt(
+            base_prompt=self.system_prompt,
+            user_message=user_message,
+            use_skills=self.use_skills,
+        )
 
         for turn in range(self.max_turns):
             # Component: context management
@@ -68,7 +69,7 @@ class Agent:
             )
 
             hooks.fire("after_response", response=response)
-            messages.append(response.message.raw)
+            messages.append(assistant_message(response.message.raw))
 
             if not response.message.tool_calls:
                 final_text = response.message.content or ""
@@ -84,11 +85,7 @@ class Agent:
                 except json.JSONDecodeError as e:
                     tool_input = {}
                     result = f"Error: invalid tool arguments JSON: {e}"
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": result,
-                    })
+                    messages.append(tool_result_message(tool_call.id, result))
                     continue
 
                 hooks.fire("before_tool_call", name=name, input=tool_input)
@@ -104,11 +101,7 @@ class Agent:
 
                 hooks.fire("after_tool_call", name=name, input=tool_input, result=result)
 
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "content": result,
-                })
+                messages.append(tool_result_message(tool_call.id, result))
 
         self.last_messages = messages
         return "[Max turns reached without a final answer]"
