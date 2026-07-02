@@ -13,6 +13,7 @@ import os
 
 from harness.tools import register_tool
 from harness.permissions import mark_risky
+from harness.tool_results import tool_error, tool_success
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "warehouse.db")
 
@@ -61,16 +62,23 @@ def inspect_schema(table_name: str = ""):
         cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
         tables = [r[0] for r in cur.fetchall()]
         conn.close()
-        return f"Tables: {', '.join(tables)}"
+        return tool_success(
+            summary=f"Tables: {', '.join(tables)}",
+            data={"tables": tables},
+        )
     try:
         safe_table = _resolve_table_name(cur, table_name)
         cur.execute(f"PRAGMA table_info({safe_table})")
         cols = cur.fetchall()
         conn.close()
-        return "\n".join(f"{c[1]} ({c[2]})" for c in cols)
+        columns = [{"name": c[1], "type": c[2]} for c in cols]
+        return tool_success(
+            summary="\n".join(f"{c['name']} ({c['type']})" for c in columns),
+            data={"table": table_name, "columns": columns},
+        )
     except ValueError as e:
         conn.close()
-        return str(e)
+        return tool_error(summary=str(e), error="table_not_found")
 
 
 @register_tool("run_query", {
@@ -85,10 +93,16 @@ def inspect_schema(table_name: str = ""):
 def run_query(sql: str):
     # Hard structural guard — not relying on the model to self-restrict.
     if WRITE_KEYWORDS.search(sql):
-        return ("REJECTED: run_query only allows SELECT statements. "
-                "Use run_transformation for writes (requires approval).")
+        return tool_error(
+            summary=("REJECTED: run_query only allows SELECT statements. "
+                     "Use run_transformation for writes (requires approval)."),
+            error="write_sql_rejected",
+        )
     if not sql.strip().upper().startswith("SELECT"):
-        return "REJECTED: query must start with SELECT."
+        return tool_error(
+            summary="REJECTED: query must start with SELECT.",
+            error="non_select_sql_rejected",
+        )
 
     conn = _connect()
     cur = conn.cursor()
@@ -99,13 +113,23 @@ def run_query(sql: str):
         total_hint = " (showing first 20 rows)" if len(rows) == 20 else ""
         conn.close()
         if not rows:
-            return "Query returned 0 rows."
+            return tool_success(
+                summary="Query returned 0 rows.",
+                data={"columns": col_names, "rows": [], "truncated": False},
+            )
         header = " | ".join(col_names)
         body = "\n".join(" | ".join(str(v) for v in row) for row in rows)
-        return f"{header}\n{body}{total_hint}"
+        return tool_success(
+            summary=f"{header}\n{body}{total_hint}",
+            data={
+                "columns": col_names,
+                "rows": [list(row) for row in rows],
+                "truncated": len(rows) == 20,
+            },
+        )
     except Exception as e:
         conn.close()
-        return f"Query error: {e}"
+        return tool_error(summary=f"Query error: {e}", error=str(e))
 
 
 @register_tool("profile_data", {

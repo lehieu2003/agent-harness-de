@@ -83,13 +83,16 @@ class SafetyTests(unittest.TestCase):
     def test_run_query_rejects_write_sql(self):
         result = de_tools.run_query("SELECT * FROM orders; DELETE FROM orders")
 
-        self.assertIn("REJECTED", result)
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error, "write_sql_rejected")
+        self.assertIn("REJECTED", result.summary)
 
     def test_profile_data_rejects_unknown_injected_table_name(self):
         result = de_tools.profile_data("orders; DROP TABLE customers")
+        schema = de_tools.inspect_schema()
 
         self.assertIn("not found", result)
-        self.assertIn("customers", de_tools.inspect_schema())
+        self.assertIn("customers", schema.data["tables"])
 
     def test_verification_reports_row_count_changes(self):
         tool_input = {"table_name": "orders", "action": "truncate"}
@@ -206,7 +209,7 @@ class SafetyTests(unittest.TestCase):
         tool_payload = json.loads(tool_message["content"])
 
         self.assertEqual(tool_message["tool_call_id"], "call_1")
-        self.assertEqual(tool_payload["summary"], de_tools.inspect_schema())
+        self.assertEqual(tool_payload["summary"], de_tools.inspect_schema().summary)
         self.assertIn({
             "role": "tool",
             "tool_call_id": "call_1",
