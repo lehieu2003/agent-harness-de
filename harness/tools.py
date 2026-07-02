@@ -30,7 +30,7 @@ def register_tool(name: str, schema: dict):
 
 
 def get_tool_schemas(allowed_tools: list[str] | None = None) -> list[dict]:
-    """Returns tool schemas in the format the Anthropic API expects."""
+    """Returns internal tool schemas."""
     if allowed_tools is None:
         return [t["schema"] for t in TOOL_REGISTRY.values()]
     return [TOOL_REGISTRY[t]["schema"] for t in allowed_tools if t in TOOL_REGISTRY]

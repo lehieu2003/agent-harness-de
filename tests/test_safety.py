@@ -8,6 +8,8 @@ from unittest.mock import patch
 
 import de_tools
 import verify
+from harness.core import Agent
+from harness.models import ModelMessage, ModelResponse
 from harness.session import load_session, save_session
 from harness.subagents import make_subagent_tool
 from harness.tools import execute_tool, get_tool_schemas
@@ -97,6 +99,34 @@ class SafetyTests(unittest.TestCase):
             verify.verify_after_write("drop_or_truncate", tool_input, result)
 
         self.assertIn("orders: 2 -> 0", output.getvalue())
+
+    def test_agent_uses_injected_model_client_without_api_key(self):
+        class FakeModelClient:
+            def __init__(self):
+                self.calls = []
+
+            def complete(self, system, messages, tool_schemas, max_tokens):
+                self.calls.append({
+                    "system": system,
+                    "messages": messages,
+                    "tool_schemas": tool_schemas,
+                    "max_tokens": max_tokens,
+                })
+                return ModelResponse(
+                    message=ModelMessage(
+                        content="done",
+                        tool_calls=[],
+                        raw={"role": "assistant", "content": "done"},
+                    ),
+                    raw=object(),
+                )
+
+        fake_client = FakeModelClient()
+        agent = Agent(system_prompt="test system", model_client=fake_client, use_skills=False)
+
+        self.assertEqual(agent.run("hello"), "done")
+        self.assertEqual(fake_client.calls[0]["system"], "test system")
+        self.assertEqual(fake_client.calls[0]["messages"][0]["content"], "hello")
 
 
 if __name__ == "__main__":
