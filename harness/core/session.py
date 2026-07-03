@@ -7,7 +7,7 @@ import os
 import re
 import uuid
 
-SESSIONS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "sessions")
+SESSIONS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "sessions")
 os.makedirs(SESSIONS_DIR, exist_ok=True)
 SESSION_ID_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 

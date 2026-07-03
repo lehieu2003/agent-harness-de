@@ -2,14 +2,14 @@
 Entry point: a simple CLI chat loop using the harness.
 
 Usage:
-    python main.py                 # start a new session
-    python main.py --resume abc123 # resume a saved session
+    python -m interfaces.cli                 # start a new session
+    python -m interfaces.cli --resume abc123 # resume a saved session
 """
 import argparse
 
-import example_tools  # noqa: F401 (registers tools as a side effect)
+import examples.tools  # noqa: F401 (registers tools as a side effect)
 from harness import Agent
-from harness.session import new_session_id, save_session, load_session
+from harness.core.session import new_session_id, save_session, load_session
 
 
 SYSTEM_PROMPT = """You are a helpful, general-purpose assistant.

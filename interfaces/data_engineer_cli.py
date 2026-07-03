@@ -2,8 +2,8 @@
 Senior Data Engineer agent — CLI entry point.
 
 Setup:
-    python db_setup.py       # create the mock warehouse (run once)
-    python main_de.py        # start chatting with the agent
+    python -m scripts.db_setup              # create the mock warehouse (run once)
+    python -m interfaces.data_engineer_cli  # start chatting with the agent
 
 Try asking:
     "Why did the daily_revenue pipeline fail yesterday?"
@@ -12,12 +12,12 @@ Try asking:
 """
 import argparse
 
-import de_tools      # noqa: F401 — registers DE tools
-import de_subagents  # noqa: F401 — registers the blast-radius sub-agent
-import verify         # noqa: F401 — registers verification hook
+import examples.data_engineering_tools      # noqa: F401 — registers DE tools
+import examples.data_engineering_subagents  # noqa: F401 — registers the blast-radius sub-agent
+import examples.verification_hooks          # noqa: F401 — registers verification hook
 
 from harness import Agent
-from harness.session import new_session_id, save_session, load_session
+from harness.core.session import new_session_id, save_session, load_session
 
 SYSTEM_PROMPT = """You are a senior data engineer working inside a company's \
 analytics warehouse. You have 8+ years of experience and you've been burned \

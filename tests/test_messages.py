@@ -1,6 +1,6 @@
 import unittest
 
-from harness.messages import assistant_message, tool_result_message, user_message
+from harness.core.messages import assistant_message, tool_result_message, user_message
 
 
 class MessageHelperTests(unittest.TestCase):

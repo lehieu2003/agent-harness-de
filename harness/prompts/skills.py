@@ -7,7 +7,7 @@ as the first line, and it becomes available to the agent.
 """
 import os
 
-SKILLS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "skills")
+SKILLS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "skills")
 
 
 def list_skills() -> dict[str, str]:

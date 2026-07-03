@@ -5,33 +5,33 @@ maps each component directly to its implementation.
 
 | # | Component | File | What it does |
 |---|---|---|---|
-| 1 | **While loop** (required) | `harness/core.py` | `Agent.run()` — the loop: call model → check for tool_use → execute → feed back → repeat |
-| 2 | **Context mgmt** (required) | `harness/context.py` | Token estimation + compaction so long conversations don't blow the context window |
-| 3 | **Skills & tools** | `harness/tools.py` | Tool registry — `@register_tool` decorator, schema generation, execution dispatch |
-| 4 | **Sub-agents** | `harness/subagents.py` + `de_subagents.py` | Spawns a fresh, scoped `Agent` instance to delegate a sub-task (e.g. blast-radius estimation) |
-| 5 | **Built-in skills** | `harness/skills.py` + `skills/*.md` | Loads markdown instructions into the system prompt when relevant |
-| 6 | **Session persist** | `harness/session.py` | Save/load conversation JSON to resume later |
-| 7 | **Prompt assembly** | `harness/core.py` (`Agent.run`, system prompt build) + `main_de.py` (`SYSTEM_PROMPT`) | Combines system prompt + skills + tools + history into the API call |
-| 8 | **Lifecycle hooks** | `harness/hooks.py` + `verify.py` | Extension points (`before_turn`, `after_tool_call`, etc.) — `verify.py` uses `after_tool_call` to sanity-check writes |
-| 9 | **Permissions** | `harness/permissions.py` | Risky-tool allowlist + approval gate before execution |
+| 1 | **While loop** (required) | `harness/core/agent.py` | `Agent.run()` — the loop: call model → check for tool_use → execute → feed back → repeat |
+| 2 | **Context mgmt** (required) | `harness/core/context.py` | Token estimation + compaction so long conversations don't blow the context window |
+| 3 | **Skills & tools** | `harness/tools/registry.py` | Tool registry — `@register_tool` decorator, schema generation, execution dispatch |
+| 4 | **Sub-agents** | `harness/runtime/subagents.py` + `examples/data_engineering_subagents.py` | Spawns a fresh, scoped `Agent` instance to delegate a sub-task (e.g. blast-radius estimation) |
+| 5 | **Built-in skills** | `harness/prompts/skills.py` + `skills/*.md` | Loads markdown instructions into the system prompt when relevant |
+| 6 | **Session persist** | `harness/core/session.py` | Save/load conversation JSON to resume later |
+| 7 | **Prompt assembly** | `harness/prompts/base.py` + `interfaces/data_engineer_cli.py` (`SYSTEM_PROMPT`) | Combines system prompt + skills + tools + history into the API call |
+| 8 | **Lifecycle hooks** | `harness/runtime/hooks.py` + `examples/verification_hooks.py` | Extension points (`before_turn`, `after_tool_call`, etc.) — `verification_hooks.py` uses `after_tool_call` to sanity-check writes |
+| 9 | **Permissions** | `harness/safety/permissions.py` | Risky-tool allowlist + approval gate before execution |
 
 ## Two harness instances built on this base
 
-### Generic assistant — `main.py`
-Uses `example_tools.py` (time, calculator, a "risky" delete-note tool).
+### Generic assistant — `interfaces/cli.py`
+Uses `examples/tools.py` (time, calculator, a "risky" delete-note tool).
 
-### Senior Data Engineer — `main_de.py`
+### Senior Data Engineer — `interfaces/data_engineer_cli.py`
 Domain-specific instance using every component:
-- `db_setup.py` — mock SQLite warehouse with a **planted data quality bug**
+- `scripts/db_setup.py` — mock SQLite warehouse with a **planted data quality bug**
   (`orders.status='void'` rows inflating a revenue pipeline)
-- `de_tools.py` — read tools (`inspect_schema`, `run_query`, `profile_data`,
+- `examples/data_engineering_tools.py` — read tools (`inspect_schema`, `run_query`, `profile_data`,
   `validate_sql`, `check_pipeline_status`) + write tools (`run_transformation`,
   `drop_or_truncate`). **`run_query` structurally rejects non-SELECT SQL in
   code** — permission enforcement isn't just prompt-based trust.
-- `de_subagents.py` — registers `estimate_blast_radius`, a sub-agent scoped to
+- `examples/data_engineering_subagents.py` — registers `estimate_blast_radius`, a sub-agent scoped to
   read-only tools, delegated to before any non-trivial write
-- `verify.py` — after every write, checks the DB is still structurally healthy
-- `harness/verification.py` — reusable verification engine for snapshots,
+- `examples/verification_hooks.py` — after every write, checks the DB is still structurally healthy
+- `harness/safety/verification.py` — reusable verification engine for snapshots,
   row-count diffs, schema diffs, null-count diffs, and transaction checks
 - `skills/senior_de_mindset.md` — investigate-before-acting, blast-radius
   thinking, distrust-anomalies-until-verified habits
@@ -65,16 +65,16 @@ python -m unittest discover -s tests
 ## Run the generic assistant
 
 ```bash
-python main.py
-python main.py --resume <session_id>
-python main.py --auto-approve
+python -m interfaces.cli
+python -m interfaces.cli --resume <session_id>
+python -m interfaces.cli --auto-approve
 ```
 
 ## Run the Senior Data Engineer agent
 
 ```bash
-python db_setup.py     # once — creates warehouse.db
-python main_de.py
+python -m scripts.db_setup     # once — creates warehouse.db
+python -m interfaces.data_engineer_cli
 ```
 
 Try: *"Why did the daily_revenue pipeline fail yesterday? Investigate and
@@ -99,7 +99,7 @@ passes. If verification fails, it rolls the transaction back.
 
 **Add a tool** (component 3) — in a new `*_tools.py` file:
 ```python
-from harness.tools import register_tool
+from harness.tools.registry import register_tool
 
 @register_tool("your_tool", {
     "name": "your_tool",
@@ -111,13 +111,13 @@ def your_tool(...):
 ```
 Mark it risky (component 9) if it writes/deletes/sends anything:
 ```python
-from harness.permissions import mark_risky
+from harness.safety.permissions import mark_risky
 mark_risky("your_tool")
 ```
 
 **Add a sub-agent** (component 4):
 ```python
-from harness.subagents import make_subagent_tool
+from harness.runtime.subagents import make_subagent_tool
 
 make_subagent_tool(
     name="your_subagent",
@@ -132,17 +132,17 @@ is the description used for relevance matching.
 
 **Add a hook** (component 8):
 ```python
-from harness.hooks import hooks
+from harness.runtime.hooks import hooks
 hooks.register("after_tool_call", lambda name, input, result: ...)
 ```
 
 ## Known limitations / next upgrades
 
-- **Tool registry ownership** (`harness/tools.py`) is still global, although
+- **Tool registry ownership** (`harness/tools/registry.py`) is still global, although
   each `Agent` can now expose and execute a scoped subset of tools.
-- **Skill routing** (`harness/skills.py`) uses keyword matching — upgrade to
+- **Skill routing** (`harness/prompts/skills.py`) uses keyword matching — upgrade to
   an LLM call or embedding search once you have more than a handful of skills.
-- **Context compaction** (`harness/context.py`) drops old messages with a
+- **Context compaction** (`harness/core/context.py`) drops old messages with a
   placeholder — upgrade to real LLM-generated summarization.
 - **Token estimation** is a char/4 approximation — swap for a real tokenizer.
 - **Verification** now checks table presence, row-count changes, schema diffs,

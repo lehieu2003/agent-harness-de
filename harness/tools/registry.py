@@ -3,7 +3,7 @@ Tool registry: define tools once with @register_tool, and the harness
 automatically knows their schema (for the LLM) and how to execute them.
 """
 
-from .tool_results import serialize_tool_result, tool_error
+from harness.tools.results import serialize_tool_result, tool_error
 
 TOOL_REGISTRY = {}
 

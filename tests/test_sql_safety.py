@@ -1,6 +1,6 @@
 import unittest
 
-from harness.sql_safety import (
+from harness.safety.sql_safety import (
     DESTRUCTIVE,
     READ_ONLY,
     WRITE,

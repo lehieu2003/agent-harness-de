@@ -4,8 +4,8 @@ import sqlite3
 import tempfile
 import unittest
 
-import de_tools
-from harness.tools import execute_tool
+from examples import data_engineering_tools as de_tools
+from harness.tools.registry import execute_tool
 
 
 WRITE_PLAN = {

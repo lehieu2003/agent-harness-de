@@ -3,8 +3,8 @@ Example tools for the generic assistant entry point.
 """
 from datetime import datetime
 
-from harness.permissions import mark_risky
-from harness.tools import register_tool
+from harness.safety.permissions import mark_risky
+from harness.tools.registry import register_tool
 
 
 @register_tool("get_current_time", {

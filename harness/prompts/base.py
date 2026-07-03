@@ -21,7 +21,9 @@ def build_system_prompt(
         return base_prompt
 
     if skill_loader is None:
-        skill_loader = relevant_skills_block
+        from harness import prompts as prompt_package
+
+        skill_loader = prompt_package.relevant_skills_block
 
     skills_block = skill_loader(user_message)
     if not skills_block:

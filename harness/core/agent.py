@@ -11,13 +11,13 @@ session) plugs into this loop.
 """
 import json
 
-from .messages import assistant_message, tool_result_message, user_message as make_user_message
-from .models import OpenAIModelClient
-from .tools import get_tool_schemas, execute_tool
-from .permissions import RISKY_TOOLS, request_approval
-from .context import manage_context
-from .hooks import hooks
-from .prompts import build_system_prompt
+from harness.core.messages import assistant_message, tool_result_message, user_message as make_user_message
+from harness.core.models import OpenAIModelClient
+from harness.tools.registry import get_tool_schemas, execute_tool
+from harness.safety.permissions import RISKY_TOOLS, request_approval
+from harness.core.context import manage_context
+from harness.runtime.hooks import hooks
+from harness.prompts.base import build_system_prompt
 
 
 class Agent:

@@ -7,13 +7,13 @@ import unittest
 from contextlib import redirect_stdout
 from unittest.mock import patch
 
-import de_tools
-import verify
+from examples import data_engineering_tools as de_tools
+from examples import verification_hooks as verify
 from harness.core import Agent
-from harness.models import ModelMessage, ModelResponse, ModelToolCall
-from harness.session import load_session, save_session
-from harness.subagents import make_subagent_tool
-from harness.tools import execute_tool, get_tool_schemas
+from harness.core.models import ModelMessage, ModelResponse, ModelToolCall
+from harness.core.session import load_session, save_session
+from harness.runtime.subagents import make_subagent_tool
+from harness.tools.registry import execute_tool, get_tool_schemas
 
 
 class SafetyTests(unittest.TestCase):

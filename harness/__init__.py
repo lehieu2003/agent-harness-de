@@ -1,6 +1,6 @@
-from .tools import register_tool, get_tool_schemas, execute_tool
-from .permissions import RISKY_TOOLS
-from .hooks import hooks
+from harness.safety.permissions import RISKY_TOOLS
+from harness.runtime.hooks import hooks
+from harness.tools.registry import execute_tool, get_tool_schemas, register_tool
 
 __all__ = ["Agent", "register_tool", "get_tool_schemas", "execute_tool", "RISKY_TOOLS", "hooks"]
 

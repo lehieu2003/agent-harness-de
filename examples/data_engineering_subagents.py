@@ -6,7 +6,7 @@ to this sub-agent to independently investigate how many rows/tables
 would be affected. Runs with READ-ONLY tools only, in its own isolated
 context — so its investigation doesn't bloat the main conversation.
 """
-from harness.subagents import make_subagent_tool
+from harness.runtime.subagents import make_subagent_tool
 
 make_subagent_tool(
     name="estimate_blast_radius",

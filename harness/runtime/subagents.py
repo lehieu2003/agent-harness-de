@@ -12,7 +12,7 @@ Design choice: sub-agents get a SUBSET of tools (usually read-only),
 never the full toolset — this keeps delegation safe by construction,
 the same way permissions.py keeps writes safe by construction.
 """
-from harness.tools import register_tool
+from harness.tools.registry import register_tool
 
 
 def make_subagent_tool(name: str, description: str, allowed_tools: list[str], system_prompt: str):

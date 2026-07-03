@@ -10,13 +10,13 @@ required that write tools go through approval + verification.
 import sqlite3
 import os
 
-from harness.tools import register_tool
-from harness.permissions import mark_risky
-from harness.sql_safety import validate_read_sql, validate_write_sql
-from harness.tool_results import tool_error, tool_success
-from harness.verification import VerificationEngine
+from harness.tools.registry import register_tool
+from harness.safety.permissions import mark_risky
+from harness.safety.sql_safety import validate_read_sql, validate_write_sql
+from harness.tools.results import tool_error, tool_success
+from harness.safety.verification import VerificationEngine
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "warehouse.db")
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "warehouse.db")
 REQUIRED_WRITE_PLAN_FIELDS = {
     "expected_row_impact": "Expected row impact is required before a write.",
     "blast_radius": "Blast-radius estimate is required before a write.",
@@ -27,7 +27,7 @@ REQUIRED_WRITE_PLAN_FIELDS = {
 
 def _connect():
     if not os.path.exists(DB_PATH):
-        raise RuntimeError("Database not found. Run `python db_setup.py` first.")
+        raise RuntimeError("Database not found. Run `python -m scripts.db_setup` first.")
     return sqlite3.connect(DB_PATH)
 
 

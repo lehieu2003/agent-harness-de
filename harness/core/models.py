@@ -35,7 +35,7 @@ class ModelResponse:
 
 def load_env_file(path: str | None = None):
     """Load simple KEY=VALUE pairs from .env without requiring another package."""
-    env_path = path or os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+    env_path = path or os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env")
     if not os.path.exists(env_path):
         return
 

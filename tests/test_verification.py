@@ -3,7 +3,7 @@ import sqlite3
 import tempfile
 import unittest
 
-from harness.verification import VerificationEngine
+from harness.safety.verification import VerificationEngine
 
 
 class VerificationEngineTests(unittest.TestCase):

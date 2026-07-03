@@ -6,11 +6,11 @@ only adapts it to the harness lifecycle hooks and console output.
 """
 import os
 
-from harness.hooks import hooks
-from harness.tool_results import tool_result_failed
-from harness.verification import VerificationEngine
+from harness.runtime.hooks import hooks
+from harness.tools.results import tool_result_failed
+from harness.safety.verification import VerificationEngine
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "warehouse.db")
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "warehouse.db")
 
 VERIFIED_TOOLS = {"run_transformation", "drop_or_truncate"}
 _PRE_WRITE_STATE = {}

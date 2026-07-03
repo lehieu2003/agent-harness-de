@@ -3,14 +3,14 @@ Sets up a small SQLite database simulating a real analytics warehouse,
 with a deliberately planted data quality issue for the agent to find.
 
 Run this once before using the Data Engineer agent:
-    python db_setup.py
+    python -m scripts.db_setup
 """
 import sqlite3
 import os
 import random
 from datetime import datetime, timedelta
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "warehouse.db")
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "warehouse.db")
 
 
 def setup():

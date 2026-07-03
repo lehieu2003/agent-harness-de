@@ -1,13 +1,13 @@
 import json
 import unittest
 
-from harness.tool_results import (
+from harness.tools.results import (
     serialize_tool_result,
     tool_error,
     tool_result_failed,
     tool_success,
 )
-from harness.tools import execute_tool, register_tool
+from harness.tools.registry import execute_tool, register_tool
 
 
 class ToolResultTests(unittest.TestCase):

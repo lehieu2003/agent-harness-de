@@ -2,7 +2,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from harness.models import ModelMessage, ModelResponse, ModelToolCall, openai_tool_schemas, select_model
+from harness.core.models import ModelMessage, ModelResponse, ModelToolCall, openai_tool_schemas, select_model
 
 
 class ModelBoundaryTests(unittest.TestCase):
